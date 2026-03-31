@@ -75,6 +75,7 @@ var SHARED_RULES = [
   "",
   "RULES:",
   "- Checkboxes: checked ONLY if visible mark (X, checkmark, filled box) IN the box boundary. Empty box = not checked.",
+  "- CRITICAL - BROKERAGE OBLIGATIONS PAGE: The representation checkboxes (a) and (b) are SEPARATE from the initial boxes below them. Handwritten initials in the 'Initials' boxes are NOT checkbox marks. Do NOT confuse ink from an initial that is near a checkbox with the checkbox being checked. A checkbox is checked ONLY if there is a deliberate mark INSIDE the small square box next to (a) or (b).",
   "- Conditions 7.1(a),(b),(c): filled=true ONLY if actual time AND date are written in the blanks.",
   "- Money fields: only numbers visibly written after $. If blank after $ = empty string.",
   "- If NONE or None is written as text, return that text exactly. This is different from an empty string.",
@@ -1883,15 +1884,110 @@ function BrokerView(p) {
 }
 
 // ====================================================================
-// AGENT QUICK CHECK (no login, no submission, just compliance feedback)
+// DEAL CHECKLIST (auto-populated from offer data)
 // ====================================================================
-function QuickCheck() {
+function buildChecklist(f) {
+  var items = [];
+  // PDS
+  if (f.pdsChoice === "box1_condition") {
+    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: true, cite: "OTP Part One s.6 Box 1 + s.10.2(a)" });
+    items.push({ id: "pds_fulfillment", label: "PDS condition fulfillment/waiver signed by buyer (by " + (f.cond7a_date || "?") + ")", required: true, cite: "OTP Part Two s.7(d)" });
+  } else if (f.pdsChoice === "box2_provided") {
+    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: true, cite: "OTP Part One s.6 Box 2" });
+  }
+  // Schedule 2
+  if (f.schedule2_AdditionalTerms) {
+    items.push({ id: "sch2", label: "Schedule 2 (Additional Terms) attached", required: true, cite: "OTP Part One s.10.2(b)" });
+  }
+  // Schedule 3
+  if (f.schedule3_MortgageAssumption) {
+    items.push({ id: "sch3", label: "Schedule 3 (Mortgage Assumption) attached", required: true, cite: "OTP Part One s.10.2(c)" });
+  }
+  // Schedule 4
+  if (f.schedule4_Other) {
+    items.push({ id: "sch4", label: "Schedule 4 (" + (f.schedule4_Description || "Other") + ") attached", required: true, cite: "OTP Part One s.10.2(d)" });
+  }
+  // Financing condition
+  if (f.cond7b_filled) {
+    items.push({ id: "fin_fulfill", label: "Financing condition fulfillment/waiver (by " + (f.cond7b_date || "?") + ")", required: false, cite: "OTP Part Two s.7(d)" });
+  }
+  // Inspection condition
+  if (f.cond7c_filled) {
+    items.push({ id: "insp_fulfill", label: "Inspection condition fulfillment/waiver (by " + (f.cond7c_date || "?") + ")", required: false, cite: "OTP Part Two s.7(d)" });
+  }
+  // Other conditions
+  if (f.cond7d_otherConditions && !/^none$/i.test(f.cond7d_otherConditions.trim())) {
+    items.push({ id: "other_fulfill", label: "Other condition fulfillment: " + f.cond7d_otherConditions.substring(0, 40), required: false, cite: "OTP Part Two s.7(d)" });
+  }
+  // Homestead Form 3
+  if (f.homestead === "not_on_title") {
+    items.push({ id: "form3", label: "Form 3 Homestead Consent from spouse", required: true, cite: "The Homesteads Act" });
+  }
+  // LJR consent
+  if (f.buyerRepType === "both" || f.sellerRepType === "both") {
+    items.push({ id: "ljr_consent", label: "Consent to Limited Joint Representation form signed", required: true, cite: "RESA s.30; Reg. 4.14" });
+  }
+  // Part Two signed
+  items.push({ id: "p2_signed", label: "Part Two signed by all parties", required: true, cite: "OTP Part One s.11/15 notes" });
+  // Lawyer info
+  if (!f.buyerSolicitor || f.buyerSolicitor.length < 2) {
+    items.push({ id: "buyer_lawyer", label: "Buyer solicitor information to follow", required: false, cite: "OTP Part One s.18" });
+  }
+  if (!f.sellerSolicitor || f.sellerSolicitor.length < 2) {
+    items.push({ id: "seller_lawyer", label: "Seller solicitor information to follow", required: false, cite: "OTP Part One s.18" });
+  }
+  return items;
+}
+
+function DealChecklist(p) {
+  var items = p.items || [];
+  var checks = p.checks || {};
+  var onToggle = p.onToggle;
+  if (items.length === 0) return null;
+  var done = items.filter(function(it) { return checks[it.id]; }).length;
+  return (
+    <div style={{ background: T.s1, borderRadius: 10, border: "1px solid " + T.bd, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, fontFamily: MO, color: T.ac, letterSpacing: "0.08em" }}>DEAL CHECKLIST</div>
+        <div style={{ fontSize: 9, fontFamily: MO, color: done === items.length ? T.ok : T.dm }}>{done + "/" + items.length}</div>
+      </div>
+      {items.map(function(it) {
+        var checked = !!checks[it.id];
+        return (
+          <div key={it.id} onClick={function() { onToggle(it.id); }}
+            style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: "1px solid " + T.bd + "20", cursor: "pointer" }}>
+            <div style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid " + (checked ? T.ok : T.bd), background: checked ? T.ok : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+              {checked && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>Y</span>}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: checked ? T.ok : T.tx, textDecoration: checked ? "line-through" : "none" }}>{it.label}</div>
+              <div style={{ fontSize: 8, color: T.ac, fontFamily: MO, marginTop: 1, opacity: 0.7 }}>{it.cite}{it.required ? "" : " (post-acceptance)"}</div>
+            </div>
+            {it.required && !checked && <span style={{ fontSize: 7, color: T.cr, fontFamily: MO, padding: "1px 4px", background: T.cb, borderRadius: 2, flexShrink: 0 }}>REQ</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ====================================================================
+// QUICK CHECK + SUBMIT (unified agent view)
+// ====================================================================
+function QuickCheck(p) {
   var phState = useState("upload");
   var fnState = useState("");
   var prState = useState("");
   var flState = useState(null);
   var rsState = useState([]);
   var ftState = useState("residential");
+  var cxState = useState("");
+  var nmState = useState("");
+  var snState = useState(false);
+  var exState = useState(false);
+  var trsOpen = useState(false);
+  var submitOpen = useState(false);
+  var clState = useState({});
   var ref = useRef(null);
   var dragState = useState(false);
 
@@ -1900,37 +1996,68 @@ function QuickCheck() {
   var fields = flState[0], setFields = flState[1];
   var results = rsState[0], setResults = rsState[1];
   var formType = ftState[0], setFormType = ftState[1];
+  var ctx = cxState[0], setCtx = cxState[1];
+  var name = nmState[0], setName = nmState[1];
+  var submitted = snState[0], setSubmitted = snState[1];
+  var showExtracted = exState[0], setShowExtracted = exState[1];
+  var checklist = clState[0], setChecklist = clState[1];
 
   var go = useCallback(function(f) {
-    setPhase("proc"); setFname(f.name);
+    setPhase("proc"); setFname(f.name); setSubmitted(false); trsOpen[1](false); submitOpen[1](false); setChecklist({});
     extractOffer(f, formType, prState[1]).then(function(r) {
       r.fields.formType = formType === "condo" ? "condo_unit" : "residential";
       setFields(r.fields);
-      setResults(runRules(r.fields, "la", formType));
+      setResults(runRules(r.fields, ctx || "la", formType));
       setPhase("done");
     }).catch(function(e) {
       prState[1]("Error: " + e.message);
       setPhase("error");
     });
-  }, [formType]);
+  }, [formType, ctx]);
 
   var active = results.filter(function(r) { return !r.suppressed; });
   var triggered = active.filter(function(r) { return r.triggered; });
   var passed = active.filter(function(r) { return !r.triggered; });
+  var suppressed = results.filter(function(r) { return r.suppressed; });
   var cnt = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
   triggered.forEach(function(r) { cnt[r.sev]++; });
   var grade = cnt.CRITICAL > 0 ? "FAIL" : cnt.HIGH > 2 ? "REVIEW" : cnt.HIGH > 0 ? "CAUTION" : "PASS";
   var gradeColor = gC(grade);
+  var isRejected = fields && fields.sellerResponse === "rejects";
+  var ctxLabel = { w: "Writing", lp: "Listing Pre", la: "Listing Post" }[ctx] || "Full Review";
 
-  var reset = function() { setPhase("upload"); setResults([]); setFields(null); };
+  var reset = function() { setPhase("upload"); setResults([]); setFields(null); setSubmitted(false); setShowExtracted(false); trsOpen[1](false); submitOpen[1](false); setChecklist({}); };
+
+  var checklistItems = fields ? buildChecklist(fields) : [];
+  var toggleCheck = function(id) {
+    setChecklist(function(prev) {
+      var n = {}; Object.keys(prev).forEach(function(k) { n[k] = prev[k]; });
+      n[id] = !prev[id];
+      return n;
+    });
+  };
+
+  var submit = function() {
+    var entry = {
+      id: String(Date.now()), fn: fname, agent: name || "Agent", ctx: ctx || "la",
+      g: grade, cnt: cnt, tr: triggered, pa: passed, f: fields,
+      at: new Date().toISOString(), bs: "pending", bn: "",
+      cl: checklist
+    };
+    saveOffer(entry);
+    p.onSubmit(entry);
+    setSubmitted(true);
+  };
+
+  var fl = fields;
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px" }}>
       {phase === "upload" && (
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Quick Compliance Check</div>
-          <div style={{ fontSize: 13, color: T.m, marginBottom: 6 }}>Check your offer before submitting to your broker. No data is saved.</div>
-          <div style={{ fontSize: 11, color: T.ac, marginBottom: 20, fontFamily: MO }}>{ACTIVE_RULE_COUNT + " rules | RESA + Regulation citations included"}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Offer Compliance Check</div>
+          <div style={{ fontSize: 13, color: T.m, marginBottom: 6 }}>Check your offer instantly. Submit to broker when ready.</div>
+          <div style={{ fontSize: 11, color: T.ac, marginBottom: 20, fontFamily: MO }}>{ACTIVE_RULE_COUNT + " rules | RESA + Regulation citations"}</div>
 
           <div style={{ fontSize: 9, color: T.dm, fontFamily: MO, marginBottom: 4, letterSpacing: "0.1em" }}>FORM TYPE</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -1978,34 +2105,48 @@ function QuickCheck() {
         </div>
       )}
 
-      {phase === "done" && fields && (
+      {phase === "done" && fl && (
         <div>
+          {/* Grade */}
           <div style={{ textAlign: "center", padding: "20px 16px", marginBottom: 14, background: T.s1, borderRadius: 12, border: "1px solid " + T.bd }}>
             <div style={{ fontSize: 9, color: T.dm, textTransform: "uppercase", fontFamily: MO, letterSpacing: "0.15em" }}>Compliance Check</div>
             <div style={{ fontSize: 44, fontWeight: 800, color: gradeColor, fontFamily: MO }}>{grade}</div>
-            <div style={{ fontSize: 11, color: T.m }}>{fields.propAddr || fname}</div>
-            <div style={{ fontSize: 10, color: T.dm, marginTop: 4 }}>{(fields.buyerName || "?") + " to " + (fields.sellerName || "?") + " | $" + (fields.effectivePrice ? Number(fields.effectivePrice).toLocaleString() : (fields.purchasePrice ? Number(fields.purchasePrice).toLocaleString() : "?"))}</div>
+            <div style={{ fontSize: 11, color: T.m }}>{fl.propAddr || fname}</div>
+            <div style={{ fontSize: 10, color: T.dm, marginTop: 4 }}>{(fl.buyerName || "?") + " to " + (fl.sellerName || "?") + " | $" + (fl.effectivePrice ? Number(fl.effectivePrice).toLocaleString() : (fl.purchasePrice ? Number(fl.purchasePrice).toLocaleString() : "?"))}</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12 }}>
               {[["C", cnt.CRITICAL, T.cr], ["H", cnt.HIGH, T.hi], ["M", cnt.MEDIUM, T.md], ["L", cnt.LOW, T.lo], ["OK", passed.length, T.ok]].map(function(a) {
                 return <div key={a[0]}><div style={{ fontSize: 20, fontWeight: 700, color: a[2], fontFamily: MO }}>{a[1]}</div><div style={{ fontSize: 8, color: T.dm }}>{a[0]}</div></div>;
               })}
             </div>
+            {suppressed.length > 0 && (
+              <div style={{ fontSize: 9, color: T.dm, marginTop: 8, fontFamily: MO }}>{suppressed.length + " rules suppressed (" + ctxLabel + " context)"}</div>
+            )}
           </div>
 
-          {grade === "PASS" && (
-            <div style={{ padding: "16px", marginBottom: 14, background: T.ob, borderRadius: 10, textAlign: "center", border: "1px solid " + T.ok + "30" }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: T.ok }}>Ready for Broker Submission</div>
-              <div style={{ fontSize: 11, color: T.m, marginTop: 4 }}>No critical or high issues found. Submit this offer through the Agent portal.</div>
+          {/* Rejected offer notice */}
+          {isRejected && (
+            <div style={{ padding: "12px 16px", marginBottom: 14, background: T.cb, border: "1px solid " + T.cr + "30", borderRadius: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.cr }}>REJECTED OFFER</div>
+              <div style={{ fontSize: 11, color: T.m, marginTop: 4 }}>Not submitted for broker review. Fix flagged issues before your next offer.</div>
             </div>
           )}
 
-          {grade !== "PASS" && (
-            <div style={{ padding: "12px 16px", marginBottom: 14, background: cnt.CRITICAL > 0 ? T.cb : T.hb, borderRadius: 10, border: "1px solid " + (cnt.CRITICAL > 0 ? T.cr : T.hi) + "30" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: cnt.CRITICAL > 0 ? T.cr : T.hi }}>{cnt.CRITICAL > 0 ? "Fix Critical Issues Before Submitting" : "Review Issues Before Submitting"}</div>
-              <div style={{ fontSize: 11, color: T.m, marginTop: 4 }}>Address the items below to get a clean submission. Statutory references are shown for each issue.</div>
+          {/* Amendments */}
+          {fl.hasAm && (
+            <div style={{ marginBottom: 12, padding: "10px 14px", background: T.hb, border: "1px solid " + T.hi + "25", borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.hi, fontFamily: MO, marginBottom: 6 }}>COUNTER-OFFER AMENDMENTS</div>
+              {(fl._am || []).map(function(a, i) {
+                return <div key={i} style={{ fontSize: 11, marginBottom: 4, lineHeight: 1.5 }}>
+                  <span style={{ color: T.m }}>{a.field}: </span>
+                  <span style={{ color: T.cr, textDecoration: "line-through" }}>{a.original}</span>
+                  <span style={{ color: T.dm }}>{" -> "}</span>
+                  <span style={{ color: T.ok, fontWeight: 600 }}>{a.amended}</span>
+                </div>;
+              })}
             </div>
           )}
 
+          {/* Issues */}
           {triggered.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 10, fontWeight: 700, fontFamily: MO, marginBottom: 6 }}>{"ISSUES (" + triggered.length + ")"}</div>
@@ -2013,12 +2154,94 @@ function QuickCheck() {
             </div>
           )}
 
+          {/* Extracted Fields */}
+          <div style={{ marginBottom: 12 }}>
+            <div onClick={function() { setShowExtracted(!showExtracted); }} style={{ fontSize: 10, fontWeight: 700, fontFamily: MO, color: T.ac, cursor: "pointer", padding: "6px 0" }}>
+              {(showExtracted ? "- " : "+ ") + "EXTRACTED FIELDS"}
+            </div>
+            {showExtracted && (
+              <div style={{ background: T.s1, borderRadius: 8, border: "1px solid " + T.bd, padding: 10 }}>
+                {[
+                  ["Form Type", fl.formType === "condo_unit" ? "Condo Unit OTP" : "Residential OTP"],
+                  ["Buyer", fl.buyerName], ["Seller", fl.sellerName], ["Property", fl.propAddr],
+                  ["Legal Desc", fl.legalDescription],
+                  ["Offer Price", fl.purchasePrice ? "$" + Number(fl.purchasePrice).toLocaleString() : ""],
+                  ["Counter Price", fl._hasCounterPrice ? "$" + Number(fl.counterOfferPrice).toLocaleString() : ""],
+                  ["Selling Price", fl.effectivePrice ? "$" + Number(fl.effectivePrice).toLocaleString() : ""],
+                  ["Mortgage", fl.mortgageBox + (fl.mortgageAmount ? " ($" + Number(fl.mortgageAmount).toLocaleString() + ")" : "")],
+                  ["Possession", fl.possessionDate], ["Deposit", fl.depositTotal + (fl.hasDepositMethod ? " via " + (fl.depositMethods || []).join(", ") : "")],
+                  ["PDS", fl.pdsChoice], ["Homestead", fl.homestead], ["Residency", fl.residency],
+                  ["Seller Response", fl.sellerResponse], ["Irrevocability", fl.irrevocability || ""]
+                ].map(function(r) {
+                  return <div key={r[0]} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid " + T.bd + "20" }}>
+                    <span style={{ fontSize: 10, color: T.dm, minWidth: 90 }}>{r[0]}</span>
+                    <span style={{ fontSize: 10, fontFamily: MO, color: r[1] ? T.tx : T.cr, textAlign: "right", flex: 1, marginLeft: 8, wordBreak: "break-word" }}>{r[1] || "-"}</span>
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Passed */}
           <details style={{ marginBottom: 14 }}>
             <summary style={{ fontSize: 10, fontWeight: 700, color: T.ok, fontFamily: MO, cursor: "pointer" }}>{"PASSED (" + passed.length + ")"}</summary>
             <div style={{ marginTop: 4 }}>{passed.map(function(r) { return <div key={r.id} style={{ padding: "3px 8px", fontSize: 9, color: T.ok, fontFamily: MO }}>{r.id + " " + r.check}</div>; })}</div>
           </details>
 
-          <button onClick={reset} style={{ width: "100%", padding: 12, background: "transparent", border: "1px solid " + T.bd, borderRadius: 8, color: T.m, fontSize: 12, cursor: "pointer" }}>Check Another Offer</button>
+          {/* SUBMIT TO BROKER section */}
+          {!isRejected && (
+            <div style={{ marginBottom: 14 }}>
+              <button onClick={function() { submitOpen[1](!submitOpen[0]); }}
+                style={{ width: "100%", padding: 12, background: submitOpen[0] ? T.ac + "15" : T.ad, border: "1px solid " + T.ac + "40", borderRadius: 8, color: T.ac, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: SA }}>
+                {(submitOpen[0] ? "- " : "+ ") + "Submit to Broker"}
+              </button>
+
+              {submitOpen[0] && (
+                <div style={{ marginTop: 10, padding: 14, background: T.s1, borderRadius: 10, border: "1px solid " + T.bd }}>
+                  {/* Agent info */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.dm, fontFamily: MO, marginBottom: 6, letterSpacing: "0.08em" }}>AGENT DETAILS</div>
+                    <input placeholder="Your name" value={name} onChange={function(e) { setName(e.target.value); }}
+                      style={{ width: "100%", padding: "8px 12px", background: T.bg, border: "1px solid " + T.bd, borderRadius: 6, color: T.tx, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: SA, marginBottom: 8 }} />
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.dm, fontFamily: MO, marginBottom: 4, letterSpacing: "0.08em" }}>REVIEW CONTEXT</div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                      {[["w", "Writing"], ["lp", "Listing Pre"], ["la", "Listing Post"]].map(function(a) {
+                        return <button key={a[0]} onClick={function() { setCtx(a[0]); setResults(runRules(fl, a[0], formType)); }}
+                          style={{ flex: 1, padding: "6px 4px", background: ctx === a[0] ? T.ad : T.bg, border: "1px solid " + (ctx === a[0] ? T.ac : T.bd), borderRadius: 6, cursor: "pointer", fontSize: 10, fontWeight: 600, color: ctx === a[0] ? T.ac : T.dm }}>{a[1]}</button>;
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Deal Checklist */}
+                  <DealChecklist items={checklistItems} checks={checklist} onToggle={toggleCheck} />
+
+                  {/* Trade Record Sheet */}
+                  <div style={{ marginBottom: 12 }}>
+                    <button onClick={function() { trsOpen[1](!trsOpen[0]); }}
+                      style={{ width: "100%", padding: 8, background: trsOpen[0] ? T.s2 : T.bg, border: "1px solid " + T.bd, borderRadius: 6, color: T.ac, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: SA }}>
+                      {(trsOpen[0] ? "- " : "+ ") + "Trade Record Sheet"}
+                    </button>
+                    {trsOpen[0] && <div style={{ marginTop: 8 }}><TradeRecordSheet fields={fl} /></div>}
+                  </div>
+
+                  {/* Submit */}
+                  {submitted ? (
+                    <div style={{ padding: 14, background: T.ob, borderRadius: 8, textAlign: "center", border: "1px solid " + T.ok + "30" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.ok }}>Submitted to Broker Queue</div>
+                    </div>
+                  ) : (
+                    <button onClick={submit} disabled={!name.trim()}
+                      style={{ width: "100%", padding: 12, background: !name.trim() ? T.dm : cnt.CRITICAL > 0 ? T.cr : T.ac, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: name.trim() ? "pointer" : "not-allowed", opacity: name.trim() ? 1 : 0.5 }}>
+                      {cnt.CRITICAL > 0 ? "Submit (Critical Issues Present)" : "Submit to Broker"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reset */}
+          <button onClick={reset} style={{ width: "100%", padding: 10, background: "transparent", border: "1px solid " + T.bd, borderRadius: 8, color: T.m, fontSize: 11, cursor: "pointer" }}>Check Another Offer</button>
         </div>
       )}
     </div>
@@ -2063,23 +2286,23 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.ac, boxShadow: "0 0 8px " + T.ac + "60" }} />
           <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "0.14em", fontFamily: MO }}>OFFERGUARD</span>
-          <span style={{ fontSize: 8, color: T.ac, fontFamily: MO, padding: "2px 6px", background: T.ad, borderRadius: 3 }}>v4.7</span>
+          <span style={{ fontSize: 8, color: T.ac, fontFamily: MO, padding: "2px 6px", background: T.ad, borderRadius: 3 }}>v4.8</span>
           <span style={{ fontSize: 8, color: T.ok, fontFamily: MO, padding: "2px 6px", background: T.ok + "15", borderRadius: 3 }}>{ACTIVE_RULE_COUNT + " RULES"}</span>
         </div>
         <div style={{ display: "flex", background: T.bg, borderRadius: 6, padding: 2, border: "1px solid " + T.bd }}>
-          {[["check", "Quick Check"], ["agent", "Agent"], ["broker", "Broker"]].map(function(a) {
+          {[["check", "Check + Submit"], ["broker", "Broker"]].map(function(a) {
             var k = a[0], label = a[1];
             var active = view === k;
             var badge = k === "broker" && pendingCount > 0 && !active;
             return <button key={k} onClick={function() { setView(k); }}
-              style={{ padding: "6px 14px", borderRadius: 4, border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: MO, background: active ? T.ac : "transparent", color: active ? "#fff" : T.dm, position: "relative" }}>
+              style={{ padding: "6px 16px", borderRadius: 4, border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: MO, background: active ? T.ac : "transparent", color: active ? "#fff" : T.dm, position: "relative" }}>
               {label}
               {badge && <span style={{ position: "absolute", top: -2, right: -2, width: 14, height: 14, borderRadius: "50%", background: T.cr, color: "#fff", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pendingCount}</span>}
             </button>;
           })}
         </div>
       </div>
-      {view === "check" ? <QuickCheck /> : view === "agent" ? <AgentView onSubmit={handleSubmit} /> : <BrokerView queue={queue} onUpdate={handleUpdate} />}
+      {view === "check" ? <QuickCheck onSubmit={handleSubmit} /> : <BrokerView queue={queue} onUpdate={handleUpdate} />}
     </div>
   );
 }
