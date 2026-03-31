@@ -75,7 +75,7 @@ var SHARED_RULES = [
   "",
   "RULES:",
   "- Checkboxes: checked ONLY if visible mark (X, checkmark, filled box) IN the box boundary. Empty box = not checked.",
-  "- CRITICAL - BROKERAGE OBLIGATIONS PAGE: The representation checkboxes (a) and (b) are SEPARATE from the initial boxes below them. Handwritten initials in the 'Initials' boxes are NOT checkbox marks. Do NOT confuse ink from an initial that is near a checkbox with the checkbox being checked. A checkbox is checked ONLY if there is a deliberate mark INSIDE the small square box next to (a) or (b).",
+  "- CRITICAL - BROKERAGE OBLIGATIONS PAGE: The representation checkboxes (a) and (b) are SEPARATE from the initial boxes below them. Handwritten initials in the 'Initials' boxes are NOT checkbox marks. Do NOT confuse ink from an initial that is near a checkbox with the checkbox being checked. A checkbox is checked ONLY if there is a deliberate mark INSIDE the small square box next to (a) or (b). The initial boxes are BELOW the checkboxes and are labeled 'Initials (Buyer)' or 'Initials (Seller)' or 'Initials (Buyer brokerage representative)' etc. Ink in those labeled initial boxes does NOT mean checkbox (b) is checked. Look ONLY at the small square boxes next to the text '(a) only the Buyer...' and '(b) both parties...' for checkbox status.",
   "- Conditions 7.1(a),(b),(c): filled=true ONLY if actual time AND date are written in the blanks.",
   "- Money fields: only numbers visibly written after $. If blank after $ = empty string.",
   "- If NONE or None is written as text, return that text exactly. This is different from an empty string.",
@@ -627,10 +627,18 @@ var RULES = [
   { id: "BRK-003", cat: "BRK", check: "Same Brokerage Dual", sev: "MEDIUM",
     test: function(f) { if (!f.buyerBrokerage || !f.sellerBrokerage) return false; return f.buyerBrokerage.toLowerCase().replace(/\s/g, "") === f.sellerBrokerage.toLowerCase().replace(/\s/g, "") && f.buyerRepType !== "both"; }, msg: "Same brokerage both sides, not dual agency." },
   { id: "LJR-001", cat: "BRK", check: "Joint Rep Consent", sev: "HIGH",
-    test: function(f) { return f.buyerRepType === "both" || f.sellerRepType === "both"; },
+    test: function(f) {
+      var sameBrk = f.buyerBrokerage && f.sellerBrokerage && f.buyerBrokerage.toLowerCase().replace(/\s/g, "") === f.sellerBrokerage.toLowerCase().replace(/\s/g, "");
+      if (!sameBrk && (f.buyerRepType === "both" || f.sellerRepType === "both")) return false;
+      return f.buyerRepType === "both" || f.sellerRepType === "both";
+    },
     msg: "Limited joint representation selected. BROKER: Verify signed Consent to Limited Joint Representation form is in the file package." },
   { id: "LJR-002", cat: "BRK", check: "Joint Rep Mismatch", sev: "CRITICAL",
-    test: function(f) { return (f.buyerRepType === "both" && f.sellerRepType !== "both") || (f.buyerRepType !== "both" && f.sellerRepType === "both"); },
+    test: function(f) {
+      var sameBrk = f.buyerBrokerage && f.sellerBrokerage && f.buyerBrokerage.toLowerCase().replace(/\s/g, "") === f.sellerBrokerage.toLowerCase().replace(/\s/g, "");
+      if (!sameBrk) return false;
+      return (f.buyerRepType === "both" && f.sellerRepType !== "both") || (f.buyerRepType !== "both" && f.sellerRepType === "both");
+    },
     msg: "Representation mismatch: one brokerage claims limited joint representation but the other does not confirm." },
 
   // === CLOSING (3) ===
@@ -1360,7 +1368,7 @@ function AgentView(p) {
   var prState = useState("");
   var flState = useState(null);
   var rsState = useState([]);
-  var cxState = useState("");
+  var cxState = useState("la");
   var nmState = useState("");
   var snState = useState(false);
   var exState = useState(false);
@@ -1439,33 +1447,20 @@ function AgentView(p) {
               );
             })}
           </div>
-          <div style={{ fontSize: 9, color: T.dm, fontFamily: MO, marginBottom: 4, letterSpacing: "0.1em" }}>REVIEW CONTEXT</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            {[["w", "Writing", "Buyer offer pre-presentation"], ["lp", "Listing Pre", "Incoming offer pre-acceptance"], ["la", "Listing Post", "Post-acceptance full review"]].map(function(a) {
-              return (
-                <button key={a[0]} onClick={function() { setCtx(a[0]); }}
-                  style={{ flex: "1 1 100px", padding: "10px 8px", background: ctx === a[0] ? T.ad : T.s1, border: "1px solid " + (ctx === a[0] ? T.ac : T.bd), borderRadius: 8, cursor: "pointer", textAlign: "left" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: ctx === a[0] ? T.ac : T.tx, fontFamily: SA }}>{a[1]}</div>
-                  <div style={{ fontSize: 9, color: T.dm, marginTop: 2 }}>{a[2]}</div>
-                </button>
-              );
-            })}
-          </div>
           <div
-            onClick={function() { if (ctx) ref.current.click(); }}
-            onDragOver={function(e) { if (ctx) { e.preventDefault(); e.stopPropagation(); dragState[1](true); } }}
-            onDragEnter={function(e) { if (ctx) { e.preventDefault(); e.stopPropagation(); dragState[1](true); } }}
+            onClick={function() { ref.current.click(); }}
+            onDragOver={function(e) { e.preventDefault(); e.stopPropagation(); dragState[1](true); }}
+            onDragEnter={function(e) { e.preventDefault(); e.stopPropagation(); dragState[1](true); }}
             onDragLeave={function(e) { e.preventDefault(); e.stopPropagation(); dragState[1](false); }}
             onDrop={function(e) {
               e.preventDefault(); e.stopPropagation(); dragState[1](false);
-              if (!ctx) return;
               var files = e.dataTransfer && e.dataTransfer.files;
               if (files && files.length > 0 && /\.pdf$/i.test(files[0].name)) go(files[0]);
             }}
-            style={{ border: "2px dashed " + (dragState[0] ? T.ac : ctx ? T.ac + "40" : T.dm + "30"), borderRadius: 12, padding: "50px 20px", textAlign: "center", cursor: ctx ? "pointer" : "not-allowed", opacity: ctx ? 1 : 0.4, background: dragState[0] ? T.ad : "transparent", transition: "all 0.15s" }}>
+            style={{ border: "2px dashed " + (dragState[0] ? T.ac : T.ac + "40"), borderRadius: 12, padding: "50px 20px", textAlign: "center", cursor: "pointer", background: dragState[0] ? T.ad : "transparent", transition: "all 0.15s" }}>
             <input ref={ref} type="file" accept=".pdf" onChange={function(e) { var f = e.target.files && e.target.files[0]; if (f) go(f); }} style={{ display: "none" }} />
             <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>PDF</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: dragState[0] ? T.ac : ctx ? T.tx : T.dm }}>{dragState[0] ? "Drop PDF here" : ctx ? "Click or drag offer PDF" : "Select context first"}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: dragState[0] ? T.ac : T.tx }}>{dragState[0] ? "Drop PDF here" : "Click or drag offer PDF"}</div>
           </div>
         </div>
       )}
@@ -1981,7 +1976,7 @@ function QuickCheck(p) {
   var flState = useState(null);
   var rsState = useState([]);
   var ftState = useState("residential");
-  var cxState = useState("");
+  var cxState = useState("la");
   var nmState = useState("");
   var snState = useState(false);
   var exState = useState(false);
@@ -2203,13 +2198,6 @@ function QuickCheck(p) {
                     <div style={{ fontSize: 9, fontWeight: 700, color: T.dm, fontFamily: MO, marginBottom: 6, letterSpacing: "0.08em" }}>AGENT DETAILS</div>
                     <input placeholder="Your name" value={name} onChange={function(e) { setName(e.target.value); }}
                       style={{ width: "100%", padding: "8px 12px", background: T.bg, border: "1px solid " + T.bd, borderRadius: 6, color: T.tx, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: SA, marginBottom: 8 }} />
-                    <div style={{ fontSize: 9, fontWeight: 700, color: T.dm, fontFamily: MO, marginBottom: 4, letterSpacing: "0.08em" }}>REVIEW CONTEXT</div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                      {[["w", "Writing"], ["lp", "Listing Pre"], ["la", "Listing Post"]].map(function(a) {
-                        return <button key={a[0]} onClick={function() { setCtx(a[0]); setResults(runRules(fl, a[0], formType)); }}
-                          style={{ flex: 1, padding: "6px 4px", background: ctx === a[0] ? T.ad : T.bg, border: "1px solid " + (ctx === a[0] ? T.ac : T.bd), borderRadius: 6, cursor: "pointer", fontSize: 10, fontWeight: 600, color: ctx === a[0] ? T.ac : T.dm }}>{a[1]}</button>;
-                      })}
-                    </div>
                   </div>
 
                   {/* Deal Checklist */}
