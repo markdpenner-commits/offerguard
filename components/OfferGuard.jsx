@@ -1697,7 +1697,9 @@ function OfferTimeline(p) {
 // ====================================================================
 function DrillIn(p) {
   var nsState = useState(p.item.bn || "");
+  var invState = useState(false);
   var notes = nsState[0], setNotes = nsState[1];
+  var showInvoice = invState[0], setShowInvoice = invState[1];
   var gc = gC(p.item.g);
   var f = p.item.f || {};
   var summary = buildSummary(f);
@@ -1750,6 +1752,55 @@ function DrillIn(p) {
           <button onClick={function() { p.onUpdate(p.item.id, "approved", notes); p.onBack(); }} style={{ flex: 1, padding: 12, background: T.ok, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Approve</button>
           <button onClick={function() { if (!notes.trim()) { alert("Add notes before returning."); return; } p.onUpdate(p.item.id, "returned", notes); p.onBack(); }} style={{ flex: 1, padding: 12, background: T.cr, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Return to Agent</button>
         </div>
+      </div>
+
+      {/* Lawyer Invoice / Conveyancing Direction */}
+      <div style={{ marginTop: 14 }}>
+        <button onClick={function() { setShowInvoice(!showInvoice); }}
+          style={{ width: "100%", padding: 10, background: showInvoice ? T.s2 : T.s1, border: "1px solid " + T.bd, borderRadius: 8, color: T.hi, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: SA }}>
+          {(showInvoice ? "- " : "+ ") + "Lawyer Invoice / Conveyancing Direction"}
+        </button>
+        {showInvoice && (
+          <div style={{ marginTop: 8, background: T.s1, borderRadius: 10, border: "1px solid " + T.bd, padding: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, fontFamily: MO, color: T.hi, marginBottom: 10, letterSpacing: "0.08em" }}>CONVEYANCING DIRECTION</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              {[
+                ["Property", f.propAddr || ""],
+                ["Selling Price", f.effectivePrice ? "$" + Number(f.effectivePrice).toLocaleString() : (f.purchasePrice ? "$" + Number(f.purchasePrice).toLocaleString() : "")],
+                ["Possession", f.possessionDate || ""],
+                ["Buyer(s)", f.buyerName || ""],
+                ["Seller(s)", f.sellerName || ""],
+                ["Commission", f.remunerationPct ? f.remunerationPct + "% of Purchase Price" : (f.remunerationFixedSum ? "$" + f.remunerationFixedSum : "See Section 14")],
+                ["Commission Amount", f.remunerationPct && f.effectivePrice ? "$" + (Number(f.effectivePrice) * parseFloat(f.remunerationPct) / 100).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : ""],
+                ["Deposit", f.depositTotal || ""],
+                ["Buyer Solicitor", (f.buyerSolicitor || "TBD") + (f.buyerSolicitorFirm ? " - " + f.buyerSolicitorFirm : "")],
+                ["Seller Solicitor", (f.sellerSolicitor || "TBD") + (f.sellerSolicitorFirm ? " - " + f.sellerSolicitorFirm : "")],
+                ["Listing Brokerage", f.sellerBrokerage || ""],
+                ["Selling Brokerage", f.buyerBrokerage || ""]
+              ].map(function(r) {
+                return r[1] ? (
+                  <div key={r[0]} style={{ flex: "1 1 45%", minWidth: 200 }}>
+                    <div style={{ fontSize: 8, color: T.dm, fontFamily: MO }}>{r[0]}</div>
+                    <div style={{ fontSize: 11, color: T.tx, fontFamily: MO, padding: "3px 0" }}>{r[1]}</div>
+                  </div>
+                ) : null;
+              })}
+            </div>
+            <div style={{ borderTop: "1px solid " + T.bd, paddingTop: 10, display: "flex", gap: 8 }}>
+              <button onClick={function() { window.print(); }}
+                style={{ flex: 1, padding: 10, background: T.hi, border: "none", borderRadius: 6, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                Print / Save PDF
+              </button>
+              <button onClick={function() {
+                var text = "CONVEYANCING DIRECTION\n\nProperty: " + (f.propAddr || "") + "\nSelling Price: $" + (f.effectivePrice || f.purchasePrice || "") + "\nPossession: " + (f.possessionDate || "") + "\nBuyer(s): " + (f.buyerName || "") + "\nSeller(s): " + (f.sellerName || "") + "\nCommission: " + (f.remunerationPct ? f.remunerationPct + "%" : "$" + (f.remunerationFixedSum || "?")) + "\nDeposit: " + (f.depositTotal || "") + "\nBuyer Solicitor: " + (f.buyerSolicitor || "TBD") + "\nSeller Solicitor: " + (f.sellerSolicitor || "TBD") + "\nListing Brokerage: " + (f.sellerBrokerage || "") + "\nSelling Brokerage: " + (f.buyerBrokerage || "");
+                navigator.clipboard.writeText(text).then(function() { alert("Copied to clipboard"); });
+              }}
+                style={{ flex: 1, padding: 10, background: T.ac, border: "none", borderRadius: 6, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1885,22 +1936,22 @@ function buildChecklist(f) {
   var items = [];
   // PDS
   if (f.pdsChoice === "box1_condition") {
-    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: true, cite: "OTP Part One s.6 Box 1 + s.10.2(a)" });
-    items.push({ id: "pds_fulfillment", label: "PDS condition fulfillment/waiver signed by buyer (by " + (f.cond7a_date || "?") + ")", required: true, cite: "OTP Part Two s.7(d)" });
+    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: false, cite: "OTP Part One s.6 Box 1 + s.10.2(a)" });
+    items.push({ id: "pds_fulfillment", label: "PDS condition fulfillment/waiver signed by buyer (by " + (f.cond7a_date || "?") + ")", required: false, cite: "OTP Part Two s.7(d)" });
   } else if (f.pdsChoice === "box2_provided") {
-    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: true, cite: "OTP Part One s.6 Box 2" });
+    items.push({ id: "pds_attached", label: "Property Disclosure Statement (Schedule 1) attached", required: false, cite: "OTP Part One s.6 Box 2" });
   }
   // Schedule 2
   if (f.schedule2_AdditionalTerms) {
-    items.push({ id: "sch2", label: "Schedule 2 (Additional Terms) attached", required: true, cite: "OTP Part One s.10.2(b)" });
+    items.push({ id: "sch2", label: "Schedule 2 (Additional Terms) attached", required: false, cite: "OTP Part One s.10.2(b)" });
   }
   // Schedule 3
   if (f.schedule3_MortgageAssumption) {
-    items.push({ id: "sch3", label: "Schedule 3 (Mortgage Assumption) attached", required: true, cite: "OTP Part One s.10.2(c)" });
+    items.push({ id: "sch3", label: "Schedule 3 (Mortgage Assumption) attached", required: false, cite: "OTP Part One s.10.2(c)" });
   }
   // Schedule 4
   if (f.schedule4_Other) {
-    items.push({ id: "sch4", label: "Schedule 4 (" + (f.schedule4_Description || "Other") + ") attached", required: true, cite: "OTP Part One s.10.2(d)" });
+    items.push({ id: "sch4", label: "Schedule 4 (" + (f.schedule4_Description || "Other") + ") attached", required: false, cite: "OTP Part One s.10.2(d)" });
   }
   // Financing condition
   if (f.cond7b_filled) {
@@ -1916,14 +1967,14 @@ function buildChecklist(f) {
   }
   // Homestead Form 3
   if (f.homestead === "not_on_title") {
-    items.push({ id: "form3", label: "Form 3 Homestead Consent from spouse", required: true, cite: "The Homesteads Act" });
+    items.push({ id: "form3", label: "Form 3 Homestead Consent from spouse", required: false, cite: "The Homesteads Act" });
   }
   // LJR consent
   if (f.buyerRepType === "both" || f.sellerRepType === "both") {
-    items.push({ id: "ljr_consent", label: "Consent to Limited Joint Representation form signed", required: true, cite: "RESA s.30; Reg. 4.14" });
+    items.push({ id: "ljr_consent", label: "Consent to Limited Joint Representation form signed", required: false, cite: "RESA s.30; Reg. 4.14" });
   }
   // Part Two signed
-  items.push({ id: "p2_signed", label: "Part Two signed by all parties", required: true, cite: "OTP Part One s.11/15 notes" });
+  items.push({ id: "p2_signed", label: "Part Two signed by all parties", required: false, cite: "OTP Part One s.11/15 notes" });
   // Lawyer info
   if (!f.buyerSolicitor || f.buyerSolicitor.length < 2) {
     items.push({ id: "buyer_lawyer", label: "Buyer solicitor information to follow", required: false, cite: "OTP Part One s.18" });
@@ -1956,9 +2007,8 @@ function DealChecklist(p) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: checked ? T.ok : T.tx, textDecoration: checked ? "line-through" : "none" }}>{it.label}</div>
-              <div style={{ fontSize: 8, color: T.ac, fontFamily: MO, marginTop: 1, opacity: 0.7 }}>{it.cite}{it.required ? "" : " (post-acceptance)"}</div>
+              <div style={{ fontSize: 8, color: T.ac, fontFamily: MO, marginTop: 1, opacity: 0.7 }}>{it.cite}</div>
             </div>
-            {it.required && !checked && <span style={{ fontSize: 7, color: T.cr, fontFamily: MO, padding: "1px 4px", background: T.cb, borderRadius: 2, flexShrink: 0 }}>REQ</span>}
           </div>
         );
       })}
@@ -2200,16 +2250,18 @@ function QuickCheck(p) {
                       style={{ width: "100%", padding: "8px 12px", background: T.bg, border: "1px solid " + T.bd, borderRadius: 6, color: T.tx, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: SA, marginBottom: 8 }} />
                   </div>
 
-                  {/* Deal Checklist */}
-                  <DealChecklist items={checklistItems} checks={checklist} onToggle={toggleCheck} />
-
-                  {/* Trade Record Sheet */}
+                  {/* Trade Record Sheet + Checklist */}
                   <div style={{ marginBottom: 12 }}>
                     <button onClick={function() { trsOpen[1](!trsOpen[0]); }}
                       style={{ width: "100%", padding: 8, background: trsOpen[0] ? T.s2 : T.bg, border: "1px solid " + T.bd, borderRadius: 6, color: T.ac, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: SA }}>
-                      {(trsOpen[0] ? "- " : "+ ") + "Trade Record Sheet"}
+                      {(trsOpen[0] ? "- " : "+ ") + "Trade Record Sheet + Deal Checklist"}
                     </button>
-                    {trsOpen[0] && <div style={{ marginTop: 8 }}><TradeRecordSheet fields={fl} /></div>}
+                    {trsOpen[0] && (
+                      <div style={{ marginTop: 8 }}>
+                        <DealChecklist items={checklistItems} checks={checklist} onToggle={toggleCheck} />
+                        <TradeRecordSheet fields={fl} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Submit */}
