@@ -34,27 +34,27 @@ function gC(g) { return { FAIL: T.cr, REVIEW: T.hi, CAUTION: T.hi, PASS: T.ok }[
 // -- Section ordering: maps rule categories to form sections --
 var SECTIONS = {
   ARCH: { order: 0, label: "Document Architecture" },
-  MANDATORY: { order: 1, label: "Mandatory Fields" },
-  BRK: { order: 2, label: "Brokerage" },
+  MANDATORY: { order: 1, label: "Reg. 4.3 Mandatory Fields" },
+  BRK: { order: 2, label: "Brokerage Obligations (Page 1)" },
   CHECKBOX: { order: 3, label: "Checkbox Validation" },
-  VALID: { order: 4, label: "Property Validation" },
-  CAP: { order: 5, label: "Party Capacity" },
-  SD: { order: 6, label: "Self-Dealing" },
-  MORTGAGE: { order: 7, label: "Sec 4: Mortgage" },
+  VALID: { order: 4, label: "Sec 2: Property Validation" },
+  CAP: { order: 5, label: "Sec 1: Party Capacity" },
+  SD: { order: 6, label: "RESA s.30: Self-Dealing" },
+  MORTGAGE: { order: 7, label: "Sec 4: Purchase Price / Mortgage" },
   DEP: { order: 8, label: "Sec 5: Deposit" },
-  PDS: { order: 9, label: "Sec 6: Property Disclosure" },
+  PDS: { order: 9, label: "Sec 6: Property Disclosure Statement" },
   COND: { order: 10, label: "Sec 7: Conditions" },
-  WAR: { order: 11, label: "Sec 9: Warranties" },
+  WAR: { order: 11, label: "Sec 9: Seller Representations & Warranties" },
   NONE: { order: 12, label: "Sec 9-10: Blank Fields" },
-  TIME: { order: 13, label: "Timeline" },
-  STAT: { order: 14, label: "Sec 12-13: Statutory" },
-  REM: { order: 15, label: "Sec 14: Remuneration" },
-  EXEC: { order: 16, label: "Sec 15-16: Execution" },
+  TIME: { order: 13, label: "Timeline Validation" },
+  STAT: { order: 14, label: "Sec 12-13: Homestead & Residency" },
+  REM: { order: 15, label: "Sec 14: Seller Remuneration" },
+  EXEC: { order: 16, label: "Sec 15-16: Seller Response & Execution" },
   CLOSE: { order: 17, label: "Sec 18: Conveyancing" },
-  SCH: { order: 18, label: "Schedules" },
-  REG: { order: 19, label: "Regulatory" },
+  SCH: { order: 18, label: "Sec 10.2: Schedules" },
+  REG: { order: 19, label: "Regulatory (FINTRAC)" },
   AMEND: { order: 20, label: "Amendments" },
-  CONF: { order: 21, label: "Confidence" }
+  CONF: { order: 21, label: "AI Extraction Confidence" }
 };
 function sectionSort(a, b) {
   var sa = (SECTIONS[a.cat] || { order: 99 }).order;
@@ -114,12 +114,14 @@ var SHARED_RULES = [
   "- Do NOT confuse with purchase price, deposit amounts, or any other number.",
   "",
   "CRITICAL DISTINCTION for section9Amendments:",
-  "- Section 9 of PART ONE has a field for additions/exclusions/amendments to the warranties in PART TWO.",
-  "- ONLY return what is WRITTEN in that PART ONE field. If it says 'NONE' or 'None', return that.",
-  "- Do NOT return the standard warranty text from PART TWO. Part Two is boilerplate.",
-  "- Part Two Section 9 contains standard items. These are STANDARD. Ignore them entirely.",
-  "- ONLY look at the PART ONE page with the heading about Seller's Representations and Warranties.",
-  "- If the lines are blank or say None/NONE, return 'None' or empty string. NEVER return Part Two text.",
+  "- Section 9 of PART ONE has a field labeled 'The additions, exclusions or amendments to the representations and warranties in section 9 of PART TWO are as follows:'",
+  "- This is a HIGH-PRIORITY field. Transcribe EXACTLY and COMPLETELY everything written there.",
+  "- If it says 'NONE', 'None', 'N/A', return that exact text.",
+  "- If it contains ANY other text — even a single phrase, clause reference, or handwritten note — return ALL of it verbatim.",
+  "- Look carefully for handwritten text, typed additions, or any markings in this area. Even partial or hard-to-read text should be transcribed.",
+  "- Do NOT return the standard warranty text from PART TWO. Part Two Section 9 is boilerplate — ignore it entirely.",
+  "- ONLY look at the PART ONE page with this field.",
+  "- If the lines appear completely blank with no visible writing, return empty string.",
   "",
   "CRITICAL DISTINCTION for residency (Section 13):",
   "- Box 1: 'will NOT be a non-resident' = seller IS resident. Return 'resident'.",
@@ -146,8 +148,9 @@ var SHARED_RULES = [
   "  4. Part Two LAST page - Seller signature line -> sellerSigP2",
   "  5. Page 1 buyer initial boxes -> buyerInitialsP1",
   "  6. Page 1 seller initial boxes -> sellerInitialsP1",
-  "  7. Page 1 buyer brokerage rep signature -> buyerBrkRepSig",
-  "  8. Page 1 seller brokerage rep signature -> sellerBrkRepSig",
+  "  7. Page 1 BOTTOM - buyer brokerage rep: look at the 'Signature:' line UNDER 'Buyer brokerage representative:' Name line. ANY handwritten mark or scrawl on or near that line = true -> buyerBrkRepSig",
+  "  8. Page 1 BOTTOM - seller brokerage rep: look at the 'Signature:' line UNDER 'Seller brokerage representative:' Name line. ANY handwritten mark or scrawl on or near that line = true -> sellerBrkRepSig",
+  "- For items 7 and 8: The brokerage rep signatures are at the BOTTOM of page 1, below the Self-Dealing Disclosure section. There is a 'Name:' line and a 'Signature:' line for EACH side. A quick scrawl, initials, or any ink mark on the signature line counts as signed. Do NOT confuse the printed Name with the Signature - they are separate lines.",
 ].join("\n");
 
 var SHARED_KEYS = [
@@ -202,11 +205,58 @@ var SHARED_KEYS = [
   "sellerBrkRepSig(bool - seller brokerage rep signature on page 1)",
   "",
   "PART TWO AMENDMENT DETECTION:",
-  "_partTwoModified(bool): Scan ALL Part Two pages. Look for crossed-out text, strikethrough, handwritten additions, annotations, inserted text, deleted clauses, initialed changes.",
-  "If Part Two is completely clean and unmodified, return false. If ANY modification is visible, return true.",
-  "_partTwoModDetails(string): If _partTwoModified is true, describe what was modified. If false, return empty string.",
+  "THIS IS CRITICAL. Part Two is a PRESCRIBED STATUTORY FORM that must NOT be modified. Any alteration is a compliance violation.",
+  "_partTwoModified(bool): Scan EVERY page of Part Two with extreme care. Look for ANY of the following:",
+  "  - Crossed-out text, strikethrough lines, or scribble lines over printed text",
+  "  - Handwritten additions, margin notes, or inserted text anywhere",
+  "  - Whiteout, correction tape, or overwritten text",
+  "  - Initialed changes or marginal annotations",
+  "  - Deleted clauses, sections, or paragraphs",
+  "  - Any ink mark that is NOT a buyer/seller signature on the LAST page of Part Two",
+  "  - Any ink mark that is NOT a buyer/seller signature at the very end (Section 19 signature lines)",
+  "The ONLY acceptable marks on Part Two are buyer and seller signatures on the FINAL signature page (Section 19).",
+  "If you see ANY other mark, annotation, crossing-out, or handwriting on ANY Part Two page, return true.",
+  "When in doubt, return true. False negatives on Part Two modifications are dangerous.",
+  "_partTwoModDetails(string): If _partTwoModified is true, describe EXACTLY what you see and on which page/section. If false, return empty string.",
   "",
   "_pageCount(integer total pages in PDF)",
+  "",
+  "ATTACHED DOCUMENT DETECTION:",
+  "_attachedDocs: Scan the title/header of EVERY page in the PDF. Report an array of objects for each distinct document you find beyond Part One and Part Two.",
+  "For each document found, return: {type, title, pageNumbers}",
+  "  type values: 'pds' | 'schedule2' | 'schedule3' | 'schedule4' | 'addendum' | 'amendment' | 'condition_removal' | 'other'",
+  "  title: the actual title text visible on the page (e.g. 'PROPERTY DISCLOSURE STATEMENT', 'SCHEDULE 2 - Additional Terms')",
+  "  pageNumbers: array of page numbers this document spans (e.g. [12,13,14,15])",
+  "Look for these specific headers:",
+  "  - 'PROPERTY DISCLOSURE STATEMENT' or 'SCHEDULE 1' -> type: 'pds'",
+  "  - 'SCHEDULE 2' or 'ADDITIONAL TERMS AND CONDITIONS' -> type: 'schedule2'",
+  "  - 'SCHEDULE 3' or 'ASSUMPTION OF MORTGAGE' -> type: 'schedule3'",
+  "  - 'SCHEDULE 4' -> type: 'schedule4'",
+  "  - 'ADDENDUM' or 'AMENDMENT' -> type: 'addendum' or 'amendment'",
+  "  - 'CONDITION REMOVAL' or 'WAIVER' or 'NOTICE OF FULFILLMENT' -> type: 'condition_removal'",
+  "  - Any other titled document not Part One or Part Two -> type: 'other'",
+  "If no additional documents are found beyond Part One and Part Two, return an empty array [].",
+  "Do NOT include Part One pages or Part Two pages in this list.",
+  "",
+  "PROPERTY DISCLOSURE STATEMENT VALIDATION:",
+  "If a Property Disclosure Statement is detected in the PDF, examine it carefully and report:",
+  "_pdsCompleted(bool): Are the checkbox columns (CORRECT / NOT CORRECT / DO NOT KNOW) actually filled in?",
+  "  Look at the table rows (items 2 through 24). If check marks or initials appear in the checkbox columns for most items, return true.",
+  "  If the checkbox columns are entirely blank or only 1-2 items are marked, return false. This indicates a blank/incomplete PDS.",
+  "_pdsNotCorrectItems(array of integers): List the item numbers where 'NOT CORRECT' is checked (e.g. [9, 14, 22]).",
+  "  If none are checked as NOT CORRECT, return empty array [].",
+  "_pdsDoNotKnowItems(array of integers): List the item numbers where 'DO NOT KNOW' is checked.",
+  "  If none, return empty array [].",
+  "_pdsExplanationsPresent(bool): If any items are marked NOT CORRECT or DO NOT KNOW, is there text written in the 'Explanations' section? true if explanations are provided, false if the Explanations area is blank despite NOT CORRECT or DO NOT KNOW being checked.",
+  "_pdsSellerSigned(bool): Is there a seller signature on the PDS 'Acknowledgement and Agreement by Seller' page?",
+  "  Look for a handwritten mark, DocuSign stamp, or any signature on the 'Seller' signature lines at the bottom of the acknowledgement page.",
+  "  A printed name alone is NOT a signature. Return true ONLY if an actual signature mark is present.",
+  "_pdsBuyerSigned(bool): Is there a buyer signature on the PDS 'Acknowledgement by Buyer' section?",
+  "  This is at the very bottom of the PDS, below the seller acknowledgement. Look for signature marks on the 'Buyer' lines.",
+  "  Return true ONLY if an actual signature mark is present.",
+  "_pdsBuyerSignedDate(string): The date written on the line 'Date this Property Disclosure Statement is signed by the Buyer:'. Return the date as written, or empty string if blank.",
+  "If NO Property Disclosure Statement is detected in the PDF, return false for all _pds fields and empty arrays for the item lists.",
+  "",
   "_confidence: {buyerName sellerName purchasePrice possessionDate mortgageBox homestead residency sellerResponse conditions legalDescription: each high|medium|low}",
   "_amendments: [{field original amended}] for any crossed-out values with replacements",
   "_partyCapacity: {buyerCapacity sellerCapacity} values: Executor|POA|Trustee|Corporation or empty string",
@@ -441,6 +491,26 @@ function normalizeFields(f) {
     f._cesValid = ces > 0 && ces <= 100;
   }
 
+  // Attached document detection
+  var docs = f._attachedDocs || [];
+  f._detectedPDS = docs.some(function(d) { return d.type === "pds"; });
+  f._detectedSch2 = docs.some(function(d) { return d.type === "schedule2"; });
+  f._detectedSch3 = docs.some(function(d) { return d.type === "schedule3"; });
+  f._detectedSch4 = docs.some(function(d) { return d.type === "schedule4"; });
+  f._detectedAddendum = docs.some(function(d) { return d.type === "addendum" || d.type === "amendment"; });
+  f._detectedCondRemoval = docs.some(function(d) { return d.type === "condition_removal"; });
+  f._docSummary = docs.map(function(d) { return d.title || d.type; });
+
+  // PDS validation (only relevant if PDS is detected)
+  f._pdsPresent = f._detectedPDS;
+  f._pdsIsComplete = f._pdsPresent && !!f._pdsCompleted;
+  f._pdsSellerOk = f._pdsPresent && !!f._pdsSellerSigned;
+  f._pdsBuyerOk = f._pdsPresent && !!f._pdsBuyerSigned;
+  f._pdsNotCorrect = (f._pdsNotCorrectItems || []);
+  f._pdsDoNotKnow = (f._pdsDoNotKnowItems || []);
+  f._pdsHasDisclosures = f._pdsNotCorrect.length > 0 || f._pdsDoNotKnow.length > 0;
+  f._pdsExplOk = !f._pdsHasDisclosures || !!f._pdsExplanationsPresent;
+
   return f;
 }
 
@@ -562,6 +632,14 @@ var RULES = [
     msg: function(f) { return f._warCount + " warranties amended/excluded."; } },
   { id: "WAR-005", cat: "WAR", check: "As-Is Clause", sev: "HIGH",
     test: function(f) { return f._hasAsIs; }, msg: "As-is clause detected." },
+  { id: "WAR-006", cat: "WAR", check: "Sec 9 Warranty Content", sev: "HIGH",
+    test: function(f) {
+      var s = (f.section9Amendments || "").trim();
+      if (!s || s.length < 3) return false;
+      if (/^(none|n\/?a|none\s*stated|nil|-+)\.?$/i.test(s)) return false;
+      return true;
+    },
+    msg: function(f) { return "Section 9 contains warranty amendments: " + (f.section9Amendments || "").substring(0, 100) + ". BROKER: Review all additions, exclusions, or amendments to Part Two warranties."; } },
 
   // === BLANK FIELD RULES (5) ===
   { id: "NON-001", cat: "NONE", check: "Excluded Fixtures Blank", sev: "MEDIUM",
@@ -748,6 +826,51 @@ var RULES = [
     test: function(f) { return f.schedule4_Other; },
     msg: function(f) { return "BROKER: Verify Schedule 4 (other) attached." + (f.schedule4_Description ? " Desc: " + f.schedule4_Description : ""); } },
 
+  // === DOCUMENT VERIFICATION (detected vs expected) ===
+  { id: "DOC-V01", cat: "SCH", check: "PDS Detected in PDF", sev: "LOW",
+    test: function(f) { return f._detectedPDS; },
+    msg: "Property Disclosure Statement detected in PDF." },
+  { id: "DOC-V02", cat: "SCH", check: "PDS Expected Not Found", sev: "HIGH",
+    test: function(f) { return (f.pdsChoice === "box1_condition" || f.pdsChoice === "box2_provided" || f.schedule1_PDS) && !f._detectedPDS; },
+    msg: "PDS referenced in offer (Section 6 or Schedule 1 checked) but Property Disclosure Statement NOT detected in PDF." },
+  { id: "DOC-V03", cat: "SCH", check: "Schedule 2 Detected", sev: "LOW",
+    test: function(f) { return f._detectedSch2; },
+    msg: "Schedule 2 (Additional Terms) detected in PDF." },
+  { id: "DOC-V04", cat: "SCH", check: "Schedule 2 Expected Not Found", sev: "HIGH",
+    test: function(f) { return f.schedule2_AdditionalTerms && !f._detectedSch2; },
+    msg: "Schedule 2 checkbox marked but Schedule 2 NOT detected in PDF." },
+  { id: "DOC-V05", cat: "SCH", check: "Schedule 3 Detected", sev: "LOW",
+    test: function(f) { return f._detectedSch3; },
+    msg: "Schedule 3 (Mortgage Assumption) detected in PDF." },
+  { id: "DOC-V06", cat: "SCH", check: "Schedule 3 Expected Not Found", sev: "HIGH",
+    test: function(f) { return f.schedule3_MortgageAssumption && !f._detectedSch3; },
+    msg: "Schedule 3 checkbox marked but Schedule 3 NOT detected in PDF." },
+  { id: "DOC-V07", cat: "SCH", check: "Addendum/Amendment Detected", sev: "MEDIUM",
+    test: function(f) { return f._detectedAddendum; },
+    msg: function(f) { var docs = (f._attachedDocs || []).filter(function(d) { return d.type === "addendum" || d.type === "amendment"; }); return "Addendum/Amendment detected: " + docs.map(function(d) { return d.title || "untitled"; }).join(", "); } },
+  { id: "DOC-V08", cat: "SCH", check: "Condition Removal Detected", sev: "LOW",
+    test: function(f) { return f._detectedCondRemoval; },
+    msg: "Condition removal / notice of fulfillment detected in PDF." },
+
+  // === PDS DOCUMENT VALIDATION (4) ===
+  { id: "PDS-005", cat: "PDS", check: "PDS Seller Not Signed", sev: "CRITICAL",
+    test: function(f) { return f._pdsPresent && !f._pdsSellerOk; },
+    msg: "Property Disclosure Statement is present but NOT SIGNED by the Seller. PDS is invalid without seller signature." },
+  { id: "PDS-006", cat: "PDS", check: "PDS Buyer Not Signed", sev: "HIGH",
+    test: function(f) { return f._pdsPresent && !f._pdsBuyerOk; },
+    msg: "Property Disclosure Statement is present but NOT SIGNED by the Buyer. Buyer must acknowledge receipt." },
+  { id: "PDS-007", cat: "PDS", check: "PDS Not Completed", sev: "HIGH",
+    test: function(f) { return f._pdsPresent && !f._pdsIsComplete; },
+    msg: "Property Disclosure Statement is present but appears BLANK or incomplete. Checkbox columns are not filled in. A blank PDS form does not satisfy the disclosure requirement." },
+  { id: "PDS-008", cat: "PDS", check: "PDS Disclosures No Explanation", sev: "MEDIUM",
+    test: function(f) { return f._pdsPresent && f._pdsHasDisclosures && !f._pdsExplOk; },
+    msg: function(f) {
+      var items = [];
+      if (f._pdsNotCorrect.length > 0) items.push("NOT CORRECT on items: " + f._pdsNotCorrect.join(", "));
+      if (f._pdsDoNotKnow.length > 0) items.push("DO NOT KNOW on items: " + f._pdsDoNotKnow.join(", "));
+      return "PDS has disclosures (" + items.join("; ") + ") but Explanations section appears blank. Seller must provide complete explanations for all NOT CORRECT and DO NOT KNOW responses.";
+    } },
+
   // === CONDO-SPECIFIC (5) ===
   { id: "CND-C01", cat: "VALID", check: "Condo Unit Number", sev: "CRITICAL", form: "condo",
     test: function(f) { return !f.condoUnitNumber; }, msg: "Condo unit number missing." },
@@ -796,6 +919,10 @@ var CITE = {
   "PDS-002": "OTP Part One s.6 Box 2 + s.10.2(a) - PDS must be attached as Schedule 1",
   "PDS-003": "OTP Part Two s.9 - PDS disclosures prevail over warranty 9(g)",
   "PDS-004": "OTP Part One s.6 - defaults to Box 3 if none selected",
+  "PDS-005": "PDS Acknowledgement - seller must sign to validate disclosure",
+  "PDS-006": "PDS Acknowledgement - buyer must sign to confirm receipt",
+  "PDS-007": "PDS s.1-24 - disclosure items must be completed by seller",
+  "PDS-008": "PDS Explanations - seller must explain all NOT CORRECT and DO NOT KNOW responses",
   "CND-001": "OTP Part Two s.7(e) - unfilled condition deemed not part of contract",
   "CND-002": "OTP Part Two s.7(e) - unfilled condition deemed not part of contract",
   "CND-003": "OTP Part Two s.7(e) - unfilled condition deemed not part of contract",
@@ -815,6 +942,7 @@ var CITE = {
   "WAR-003": "OTP Part Two s.9(g) - working order warranty amended",
   "WAR-004": "OTP Part Two s.9 - multiple warranty amendments increase risk",
   "WAR-005": "OTP Part Two s.9 - as-is clause overrides standard warranties",
+  "WAR-006": "OTP Part One s.9 - any amendment to Part Two warranties requires broker review",
   "NON-001": "OTP Part One s.2 - excluded fixtures should state None if blank",
   "NON-002": "OTP Part One s.2 - included chattels should state None if blank",
   "NON-003": "OTP Part One s.10 - additional terms should state None if blank",
@@ -851,6 +979,14 @@ var CITE = {
   "SCH-003": "OTP Part One s.10.2(c) - verify Schedule 3 attached",
   "SCH-004": "OTP Part One ss.6/10.2(a) - PDS condition requires Schedule 1",
   "SCH-005": "OTP Part One s.10.2(d) - verify Schedule 4 attached",
+  "DOC-V01": "OTP Part One s.10.2(a) - PDS physically present in PDF",
+  "DOC-V02": "OTP Part One ss.6/10.2(a) - PDS referenced but not found in PDF",
+  "DOC-V03": "OTP Part One s.10.2(b) - Schedule 2 physically present in PDF",
+  "DOC-V04": "OTP Part One s.10.2(b) - Schedule 2 checked but not found in PDF",
+  "DOC-V05": "OTP Part One s.10.2(c) - Schedule 3 physically present in PDF",
+  "DOC-V06": "OTP Part One s.10.2(c) - Schedule 3 checked but not found in PDF",
+  "DOC-V07": "Brokerage review - additional document attached to offer",
+  "DOC-V08": "OTP Part Two s.7(d) - condition fulfillment notice present",
   "TM-001": "OTP Part One s.11 - offer expires at irrevocability; late acceptance is void",
   "TM-002": "OTP Part One s.15 Box 3 - counter deadline before signing is invalid",
   "TM-003": "OTP Part One s.16 - late response to counter is void",
@@ -1337,6 +1473,33 @@ function buildSummary(f) {
   // Condo
   if (f._isCondo) {
     lines.push({ cat: "Condo", text: f._condoDesc, ok: !!(f.condoUnitNumber && f.condoCorpNumber && f._cesValid) });
+  }
+
+  // Attached Documents
+  var docs = f._attachedDocs || [];
+  if (docs.length > 0) {
+    var docNames = docs.map(function(d) { return d.title || d.type; });
+    lines.push({ cat: "Attached Docs", text: docs.length + " document(s): " + docNames.join(", "), ok: true });
+  } else {
+    var expectsDocs = f.schedule1_PDS || f.schedule2_AdditionalTerms || f.schedule3_MortgageAssumption || f.schedule4_Other || f.pdsChoice === "box1_condition" || f.pdsChoice === "box2_provided";
+    lines.push({ cat: "Attached Docs", text: expectsDocs ? "NONE DETECTED (schedules may be missing)" : "None expected", ok: !expectsDocs });
+  }
+
+  // PDS Validation (only if PDS is present)
+  if (f._pdsPresent) {
+    var pdsParts = [];
+    if (!f._pdsIsComplete) pdsParts.push("NOT COMPLETED");
+    if (!f._pdsSellerOk) pdsParts.push("SELLER NOT SIGNED");
+    if (!f._pdsBuyerOk) pdsParts.push("BUYER NOT SIGNED");
+    if (f._pdsHasDisclosures && !f._pdsExplOk) pdsParts.push("MISSING EXPLANATIONS");
+    if (f._pdsHasDisclosures && f._pdsExplOk) {
+      var discItems = [];
+      if (f._pdsNotCorrect.length > 0) discItems.push("Not Correct: " + f._pdsNotCorrect.join(","));
+      if (f._pdsDoNotKnow.length > 0) discItems.push("Do Not Know: " + f._pdsDoNotKnow.join(","));
+      pdsParts.push("Disclosures on items " + discItems.join("; "));
+    }
+    var pdsOk = f._pdsIsComplete && f._pdsSellerOk && f._pdsBuyerOk && f._pdsExplOk;
+    lines.push({ cat: "PDS Status", text: pdsOk ? "Completed, signed by both parties" + (f._pdsHasDisclosures ? " (has disclosures with explanations)" : "") : pdsParts.join(", "), ok: pdsOk });
   }
 
   return lines;
